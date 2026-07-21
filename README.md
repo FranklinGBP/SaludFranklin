@@ -2,27 +2,47 @@
 
 Aplicación web personal de seguimiento de pérdida de grasa y salud digestiva mediante voz e IA.
 
-## Estado actual (Fases 1 a 4)
+## Estado actual
 
 - ✅ Autenticación con Supabase (email + contraseña)
-- ✅ Esquema SQL completo con Row Level Security (10 tablas)
+- ✅ Esquema SQL con Row Level Security
 - ✅ Dashboard: peso, media móvil 7 días, cambio semanal, cintura, pasos, sueño, estado digestivo y recomendación basada en reglas
 - ✅ Registro por voz: dictado en el navegador (Web Speech API) + extracción estructurada con Google Gemini + confirmación editable antes de guardar
 - ✅ Historial diario
-- ✅ Fase 3: fotografías de comidas y etiquetas — análisis con Gemini Vision (alimentos, macros, avisos FODMAP), confirmación editable y guardado en `meals` + Supabase Storage (bucket privado `ffv-media`)
-- ✅ Fase 4: revisión semanal con IA — métricas agregadas de la semana (peso, pasos, sueño, proteína, entrenos, síntomas digestivos) + resumen y ajuste recomendado generados por Gemini, guardados en `weekly_reviews`
-- ✅ Biblioteca de ejercicios: 873 ejercicios con imágenes y técnica de [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (dominio público). El JSON vive en `public/data/exercises.json`; las imágenes se sirven desde el CDN de GitHub
-- ✅ Plan semanal de entrenamiento con IA: Gemini diseña la semana (casa/gimnasio, series, reps, descansos) eligiendo ejercicios de la biblioteca; se puede replanificar contándole las circunstancias ("hoy no he entrenado", "me duele el hombro") sin tocar los días ya completados. Tablas `workout_plans`, `planned_workouts` y `planned_exercises`
+- ✅ Fotografías de comidas y etiquetas: análisis con Gemini Vision, macros orientativos, avisos de intolerancias y guardado en Supabase Storage
+- ✅ Revisión semanal con IA: métricas agregadas, resumen, ajuste recomendado y adherencia
+- ✅ Biblioteca de 873 ejercicios de [free-exercise-db](https://github.com/yuhonas/free-exercise-db)
+- ✅ Plan semanal de entrenamiento con IA, ejercicios del catálogo y replanificación adaptativa
+- ✅ Plan nutricional semanal: objetivos configurables, exclusión de lactosa/fructosa/sorbitol, alimentos no deseados, referencias visuales, macros calculados por el servidor y lista de compra automática
+
+## Cómo funciona el plan nutricional
+
+Gemini no calcula ni inventa los valores nutricionales. Solo selecciona alimentos y cantidades de `lib/nutrition-catalog.ts`. El servidor valida cada alimento, excluye los incompatibles con las preferencias y calcula calorías, proteínas, carbohidratos y grasas de forma determinista antes de guardar el plan.
+
+El módulo es una implementación propia. No incorpora código de OpenNutriTracker, Mealie o Tandoor ni añade dependencias GPL/AGPL al proyecto.
+
+Tablas añadidas:
+
+- `nutrition_preferences`
+- `nutrition_plans`
+- `nutrition_plan_days`
+- `nutrition_plan_meals`
+
+Antes de usar `/nutricion`, ejecuta en Supabase SQL Editor:
+
+```text
+supabase/nutrition_planner.sql
+```
 
 ## Stack
 
-Next.js 15 (App Router) · TypeScript · Tailwind CSS 4 · Supabase (proyecto `fporcsfrkknekpkhekur`) · Google Gemini (`gemini-2.5-flash`) · Recharts · Zod
+Next.js 15 (App Router) · TypeScript · Tailwind CSS 4 · Supabase (proyecto `fporcsfrkknekpkhekur`) · Google Gemini (`gemini-3.5-flash`) · Recharts · Zod
 
 ## Configuración local
 
 ```bash
 npm install
-cp .env.example .env.local   # y rellena los valores
+cp .env.example .env.local
 npm run dev
 ```
 
@@ -32,19 +52,19 @@ Variables necesarias en `.env.local`:
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clave publishable de Supabase |
-| `GEMINI_API_KEY` | API key de Google AI Studio (https://aistudio.google.com/apikey) |
+| `GEMINI_API_KEY` | API key de Google AI Studio |
 
-La clave de Gemini solo se usa en el servidor (route handlers `/api/extract`, `/api/analyze-photo` y `/api/weekly-review`), nunca en el frontend.
+La clave de Gemini solo se usa en route handlers del servidor, nunca en el frontend.
 
 ## Despliegue en Vercel
 
-1. Sube el repo a GitHub.
-2. En Vercel: New Project → importar `FranklinGBP/SaludFranklin`.
-3. Añade las tres variables de entorno.
-4. Deploy. En Supabase → Authentication → URL Configuration, añade la URL de Vercel como Site URL / Redirect URL.
+1. Importa `FranklinGBP/SaludFranklin` en Vercel.
+2. Añade las variables de entorno.
+3. Ejecuta los scripts SQL necesarios en Supabase.
+4. Despliega y añade la URL de Vercel como Site URL / Redirect URL en Supabase Authentication.
 
 ## Notas
 
-- El dictado por voz usa la Web Speech API del navegador (Chrome/Edge/Android). En navegadores sin soporte se puede escribir el texto manualmente.
-- La app no diagnostica: si se registra sangre visible se muestra un aviso para consultar con un médico.
-- Migraciones aplicadas directamente en Supabase (ver historial de migraciones del proyecto, `franklin_fit_voice_initial_schema`).
+- El dictado por voz usa la Web Speech API del navegador.
+- La aplicación no diagnostica ni sustituye a un profesional sanitario.
+- Los valores nutricionales del plan son orientativos y proceden del catálogo controlado del proyecto.
