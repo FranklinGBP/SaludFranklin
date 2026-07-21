@@ -6,7 +6,9 @@ import { callGeminiJSON } from "@/lib/gemini";
 export const maxDuration = 60;
 
 const GEMINI_MODEL = "gemini-3.5-flash";
-const GEMINI_TIMEOUT_MS = 45_000;
+// Dos intentos de 25 s caben en los 60 s de la función.
+const GEMINI_TIMEOUT_MS = 25_000;
+const GEMINI_MAX_ATTEMPTS = 2;
 
 const SYSTEM_PROMPT = `Eres un entrenador experto en pérdida de grasa y salud digestiva. Recibes las métricas de la última semana de un usuario (y la comparación con la semana anterior).
 Contexto del usuario: busca perder grasa de forma sostenible (ritmo objetivo: -0,3 % a -0,8 % de peso corporal semanal) y vigila síntomas digestivos (posibles intolerancias FODMAP: lactosa, fructosa, sorbitol, polioles).
@@ -208,6 +210,7 @@ export async function POST() {
       responseSchema: RESPONSE_SCHEMA,
       timeoutMs: GEMINI_TIMEOUT_MS,
       maxOutputTokens: 2048,
+      maxAttempts: GEMINI_MAX_ATTEMPTS,
     });
 
     if (!result.ok) {

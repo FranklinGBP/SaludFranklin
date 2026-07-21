@@ -12,6 +12,13 @@ export type GeminiResult =
   | { ok: true; text: string }
   | { ok: false; status: number; message: string };
 
+/**
+ * Llama a Gemini pidiendo JSON estructurado. Si la petición se cuelga (timeout)
+ * o Gemini responde con un error transitorio (5xx), reintenta automáticamente
+ * hasta agotar `maxAttempts`, siempre que quepa en el tiempo de la función.
+ * Si se indica `fallbackModel`, los reintentos usan ese modelo (útil para caer
+ * a un modelo más rápido cuando el principal está saturado).
+ */
 export async function callGeminiJSON(options: {
   apiKey: string;
   model: string;
@@ -20,6 +27,8 @@ export async function callGeminiJSON(options: {
   responseSchema: object;
   timeoutMs?: number;
   maxOutputTokens?: number;
+  maxAttempts?: number;
+  fallbackModel?: string;
 }): Promise<GeminiResult> {
   const {
     apiKey,
@@ -29,7 +38,62 @@ export async function callGeminiJSON(options: {
     responseSchema,
     timeoutMs = 30_000,
     maxOutputTokens = 2048,
+    maxAttempts = 1,
+    fallbackModel,
   } = options;
+
+  let lastFailure: GeminiResult & { ok: false } = {
+    ok: false,
+    status: 502,
+    message: "No se pudo contactar con Gemini",
+  };
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptModel = attempt === 1 ? model : (fallbackModel ?? model);
+    const result = await callGeminiOnce({
+      apiKey,
+      model: attemptModel,
+      systemPrompt,
+      parts,
+      responseSchema,
+      timeoutMs,
+      maxOutputTokens,
+    });
+
+    if (result.ok) return result;
+    lastFailure = result;
+
+    // Solo merece la pena reintentar timeouts y errores transitorios del servidor.
+    const retryable = result.status === 504 || result.retryable === true;
+    if (!retryable || attempt === maxAttempts) break;
+
+    console.warn("[gemini] retrying after transient failure", {
+      model: attemptModel,
+      nextModel: fallbackModel ?? model,
+      attempt,
+      status: result.status,
+      message: result.message,
+    });
+  }
+
+  return { ok: false, status: lastFailure.status, message: lastFailure.message };
+}
+
+type GeminiOnceResult =
+  | { ok: true; text: string }
+  | { ok: false; status: number; message: string; retryable?: boolean };
+
+async function callGeminiOnce(options: {
+  apiKey: string;
+  model: string;
+  systemPrompt: string;
+  parts: GeminiPart[];
+  responseSchema: object;
+  timeoutMs: number;
+  maxOutputTokens: number;
+}): Promise<GeminiOnceResult> {
+  const { apiKey, model, systemPrompt, parts, responseSchema, timeoutMs, maxOutputTokens } =
+    options;
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -67,6 +131,17 @@ export async function callGeminiJSON(options: {
         ok: false,
         status: 504,
         message: `Gemini ha tardado demasiado (límite ${Math.round(timeoutMs / 1000)} s). Inténtalo de nuevo.`,
+        retryable: true,
+      };
+    }
+    // Errores de red (DNS, conexión cortada...) también son transitorios.
+    if (error instanceof TypeError) {
+      console.error("[gemini] network error", { model, error });
+      return {
+        ok: false,
+        status: 502,
+        message: "No se pudo conectar con Gemini. Inténtalo de nuevo.",
+        retryable: true,
       };
     }
     throw error;
@@ -88,8 +163,10 @@ export async function callGeminiJSON(options: {
     const message =
       res.status === 429
         ? "Se ha alcanzado temporalmente el límite de uso de Gemini. Prueba de nuevo en unos minutos."
-        : `Error de Gemini (${res.status}): ${upstreamMessage}`;
-    return { ok: false, status: 502, message };
+        : res.status === 503
+          ? "Gemini está saturado en este momento. Prueba de nuevo en unos segundos."
+          : `Error de Gemini (${res.status}): ${upstreamMessage}`;
+    return { ok: false, status: 502, message, retryable: res.status >= 500 };
   }
 
   const json = await res.json();
