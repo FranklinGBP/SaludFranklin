@@ -77,6 +77,35 @@ export const WorkoutPlanAISchema = z.object({
 export type PlannedExerciseData = z.infer<typeof PlannedExerciseSchema>;
 export type WorkoutPlanAIData = z.infer<typeof WorkoutPlanAISchema>;
 
+export const NutritionIngredientSelectionSchema = z.object({
+  food_id: z.string().min(1),
+  grams: z.number().min(5).max(600),
+});
+
+export const NutritionMealAISchema = z.object({
+  meal_type: z.enum(["desayuno", "comida", "cena", "snack"]),
+  title: z.string().min(2).max(120),
+  ingredients: z.array(NutritionIngredientSelectionSchema).min(1).max(8),
+  preparation: z.string().min(2).max(500),
+  visual_portion: z.string().min(2).max(250),
+  notes: z.string().max(300).nullable(),
+});
+
+export const NutritionDayAISchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  meals: z.array(NutritionMealAISchema).min(3).max(5),
+});
+
+export const NutritionPlanAISchema = z.object({
+  strategy: z.string().min(10).max(1500),
+  shopping_tips: z.string().min(2).max(1000),
+  days: z.array(NutritionDayAISchema).length(7),
+});
+
+export type NutritionIngredientSelection = z.infer<typeof NutritionIngredientSelectionSchema>;
+export type NutritionMealAIData = z.infer<typeof NutritionMealAISchema>;
+export type NutritionPlanAIData = z.infer<typeof NutritionPlanAISchema>;
+
 export const WeeklyReviewAISchema = z.object({
   ai_summary: z.string(),
   recommended_adjustment: z.string(),
