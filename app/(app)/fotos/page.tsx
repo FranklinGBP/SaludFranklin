@@ -51,6 +51,10 @@ async function compressImage(file: File): Promise<{ blob: Blob; base64: string }
 export default function FotosPage() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Progreso del guardado: si un paso falla (p. ej. media_files), reintentar
+  // no debe volver a insertar la comida ni los alimentos ya guardados.
+  const savedMealIdRef = useRef<string | null>(null);
+  const savedItemsRef = useRef(false);
   const [phase, setPhase] = useState<Phase>("input");
   const [category, setCategory] = useState<Category>("meal");
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -89,6 +93,8 @@ export default function FotosPage() {
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Error al analizar la foto");
+      savedMealIdRef.current = null;
+      savedItemsRef.current = false;
       setData(json.data);
       setPhase("review");
     } catch (e) {
@@ -122,31 +128,36 @@ export default function FotosPage() {
 
       const today = new Date().toISOString().slice(0, 10);
 
-      const { data: meal, error: mealError } = await supabase
-        .from("meals")
-        .insert({
-          user_id: user.id,
-          date: today,
-          meal_type: data.meal_type === "desconocido" ? null : data.meal_type,
-          description: data.description,
-          estimated_calories: data.estimated_calories,
-          estimated_protein: data.estimated_protein,
-          estimated_carbs: data.estimated_carbs,
-          estimated_fats: data.estimated_fats,
-          ai_confidence: data.confidence,
-        })
-        .select("id")
-        .single();
-      if (mealError) throw new Error(mealError.message);
+      if (!savedMealIdRef.current) {
+        const { data: meal, error: mealError } = await supabase
+          .from("meals")
+          .insert({
+            user_id: user.id,
+            date: today,
+            meal_type: data.meal_type === "desconocido" ? null : data.meal_type,
+            description: data.description,
+            estimated_calories: data.estimated_calories,
+            estimated_protein: data.estimated_protein,
+            estimated_carbs: data.estimated_carbs,
+            estimated_fats: data.estimated_fats,
+            ai_confidence: data.confidence,
+          })
+          .select("id")
+          .single();
+        if (mealError) throw new Error(mealError.message);
+        savedMealIdRef.current = meal.id;
+      }
+      const mealId = savedMealIdRef.current;
 
-      if (data.items.length > 0) {
+      if (data.items.length > 0 && !savedItemsRef.current) {
         const { error: itemsError } = await supabase.from("meal_items").insert(
-          data.items.map((it) => ({ meal_id: meal.id, ...it }))
+          data.items.map((it) => ({ meal_id: mealId, ...it }))
         );
         if (itemsError) throw new Error(itemsError.message);
       }
+      savedItemsRef.current = true;
 
-      const storagePath = `${user.id}/meals/${meal.id}.jpg`;
+      const storagePath = `${user.id}/meals/${mealId}.jpg`;
       const { error: uploadError } = await supabase.storage
         .from("ffv-media")
         .upload(storagePath, imageBlob, { contentType: "image/jpeg", upsert: true });
@@ -154,13 +165,15 @@ export default function FotosPage() {
 
       const { error: mediaError } = await supabase.from("media_files").insert({
         user_id: user.id,
-        meal_id: meal.id,
+        meal_id: mealId,
         file_type: "image",
         storage_path: storagePath,
         category: category === "meal" ? "meal_photo" : "label_photo",
         ai_analysis_status: "done",
       });
-      if (mediaError) throw new Error(mediaError.message);
+      // La comida y la foto ya están guardadas; si solo falla el registro en
+      // media_files (p. ej. por una restricción), no bloqueamos al usuario.
+      if (mediaError) console.error("[fotos] media_files insert failed", mediaError);
 
       setPhase("saved");
     } catch (e) {
@@ -172,6 +185,8 @@ export default function FotosPage() {
 
   function reset() {
     setPhase("input");
+    savedMealIdRef.current = null;
+    savedItemsRef.current = false;
     setData(null);
     setImageBlob(null);
     setImageBase64(null);
