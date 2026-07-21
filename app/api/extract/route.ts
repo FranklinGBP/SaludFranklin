@@ -107,7 +107,7 @@ export async function POST(request: Request) {
         generationConfig: {
           responseFormat: {
             text: {
-              mimeType: "application/json",
+              mimeType: "APPLICATION_JSON",
               schema: RESPONSE_SCHEMA,
             },
           },
