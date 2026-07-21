@@ -3,6 +3,17 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import LogoutButton from "@/components/LogoutButton";
 
+const NAV_ITEMS = [
+  { href: "/dashboard", icon: "📊", label: "Dashboard" },
+  { href: "/registro", icon: "🎙️", label: "Registro" },
+  { href: "/fotos", icon: "📷", label: "Fotos" },
+  { href: "/nutricion", icon: "🥗", label: "Nutrición" },
+  { href: "/revision", icon: "🤖", label: "Revisión" },
+  { href: "/plan", icon: "📆", label: "Entreno" },
+  { href: "/ejercicios", icon: "🏋️", label: "Ejercicios" },
+  { href: "/historial", icon: "📅", label: "Historial" },
+];
+
 export default async function AppLayout({
   children,
 }: {
@@ -26,29 +37,18 @@ export default async function AppLayout({
 
       <main>{children}</main>
 
-      <nav className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-3xl justify-around py-2 text-xs">
-          <Link href="/dashboard" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">📊</span>Dashboard
-          </Link>
-          <Link href="/registro" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">🎙️</span>Registro
-          </Link>
-          <Link href="/fotos" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">📷</span>Fotos
-          </Link>
-          <Link href="/revision" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">🤖</span>Revisión
-          </Link>
-          <Link href="/plan" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">📆</span>Plan
-          </Link>
-          <Link href="/ejercicios" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">🏋️</span>Ejercicios
-          </Link>
-          <Link href="/historial" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
-            <span className="text-xl">📅</span>Historial
-          </Link>
+      <nav className="fixed inset-x-0 bottom-0 overflow-x-auto border-t border-slate-200 bg-white">
+        <div className="mx-auto flex min-w-max max-w-3xl gap-1 px-2 py-2 text-xs">
+          {NAV_ITEMS.map((item) => (
+            <Link
+              key={item.href}
+              href={item.href}
+              className="flex min-w-20 flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600"
+            >
+              <span className="text-xl">{item.icon}</span>
+              {item.label}
+            </Link>
+          ))}
         </div>
       </nav>
     </div>
