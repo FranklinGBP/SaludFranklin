@@ -16,6 +16,8 @@ export type GeminiResult =
  * Llama a Gemini pidiendo JSON estructurado. Si la petición se cuelga (timeout)
  * o Gemini responde con un error transitorio (5xx), reintenta automáticamente
  * hasta agotar `maxAttempts`, siempre que quepa en el tiempo de la función.
+ * Si se indica `fallbackModel`, los reintentos usan ese modelo (útil para caer
+ * a un modelo más rápido cuando el principal está saturado).
  */
 export async function callGeminiJSON(options: {
   apiKey: string;
@@ -26,6 +28,7 @@ export async function callGeminiJSON(options: {
   timeoutMs?: number;
   maxOutputTokens?: number;
   maxAttempts?: number;
+  fallbackModel?: string;
 }): Promise<GeminiResult> {
   const {
     apiKey,
@@ -36,6 +39,7 @@ export async function callGeminiJSON(options: {
     timeoutMs = 30_000,
     maxOutputTokens = 2048,
     maxAttempts = 1,
+    fallbackModel,
   } = options;
 
   let lastFailure: GeminiResult & { ok: false } = {
@@ -45,9 +49,10 @@ export async function callGeminiJSON(options: {
   };
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const attemptModel = attempt === 1 ? model : (fallbackModel ?? model);
     const result = await callGeminiOnce({
       apiKey,
-      model,
+      model: attemptModel,
       systemPrompt,
       parts,
       responseSchema,
@@ -63,7 +68,8 @@ export async function callGeminiJSON(options: {
     if (!retryable || attempt === maxAttempts) break;
 
     console.warn("[gemini] retrying after transient failure", {
-      model,
+      model: attemptModel,
+      nextModel: fallbackModel ?? model,
       attempt,
       status: result.status,
       message: result.message,

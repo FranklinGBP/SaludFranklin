@@ -7,6 +7,9 @@ export const maxDuration = 60;
 
 // El análisis de imagen necesita más capacidad visual que la extracción de texto.
 const GEMINI_MODEL = "gemini-3.5-flash";
+// Si el modelo principal se cuelga, el reintento usa Flash-Lite (mucho más
+// rápido y también multimodal), igual que la extracción por voz.
+const GEMINI_FALLBACK_MODEL = "gemini-3.1-flash-lite";
 // Dos intentos de 25 s caben en los 60 s de la función; un único intento de 45 s
 // no dejaba margen para recuperarse si Gemini se colgaba puntualmente.
 const GEMINI_TIMEOUT_MS = 25_000;
@@ -161,6 +164,7 @@ export async function POST(request: Request) {
       timeoutMs: GEMINI_TIMEOUT_MS,
       maxOutputTokens: 4096,
       maxAttempts: GEMINI_MAX_ATTEMPTS,
+      fallbackModel: GEMINI_FALLBACK_MODEL,
     });
 
     if (!result.ok) {
