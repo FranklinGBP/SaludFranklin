@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { DailyVoiceSchema } from "@/lib/schemas";
 
-const GEMINI_MODEL = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-3.5-flash";
 
 const SYSTEM_PROMPT = `Eres un extractor de datos de salud. El usuario describe su día (peso, sueño, pasos, entrenamiento, síntomas digestivos, etc.) en español.
 Extrae ÚNICAMENTE los datos mencionados explícitamente. Si un dato no se menciona, usa null (o false para booleanos).
