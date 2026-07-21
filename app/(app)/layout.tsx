@@ -40,6 +40,9 @@ export default async function AppLayout({
           <Link href="/revision" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
             <span className="text-xl">🤖</span>Revisión
           </Link>
+          <Link href="/ejercicios" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
+            <span className="text-xl">🏋️</span>Ejercicios
+          </Link>
           <Link href="/historial" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
             <span className="text-xl">📅</span>Historial
           </Link>
