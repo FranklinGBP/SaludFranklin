@@ -2,15 +2,15 @@
 
 Aplicación web personal de seguimiento de pérdida de grasa y salud digestiva mediante voz e IA.
 
-## Estado actual (Fases 1 y 2)
+## Estado actual (Fases 1 a 4)
 
 - ✅ Autenticación con Supabase (email + contraseña)
 - ✅ Esquema SQL completo con Row Level Security (10 tablas)
 - ✅ Dashboard: peso, media móvil 7 días, cambio semanal, cintura, pasos, sueño, estado digestivo y recomendación basada en reglas
 - ✅ Registro por voz: dictado en el navegador (Web Speech API) + extracción estructurada con Google Gemini + confirmación editable antes de guardar
 - ✅ Historial diario
-- ⬜ Fase 3: fotografías (comidas, etiquetas) — pendiente
-- ⬜ Fase 4: revisión semanal con IA — pendiente
+- ✅ Fase 3: fotografías de comidas y etiquetas — análisis con Gemini Vision (alimentos, macros, avisos FODMAP), confirmación editable y guardado en `meals` + Supabase Storage (bucket privado `ffv-media`)
+- ✅ Fase 4: revisión semanal con IA — métricas agregadas de la semana (peso, pasos, sueño, proteína, entrenos, síntomas digestivos) + resumen y ajuste recomendado generados por Gemini, guardados en `weekly_reviews`
 
 ## Stack
 
@@ -32,7 +32,7 @@ Variables necesarias en `.env.local`:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Clave publishable de Supabase |
 | `GEMINI_API_KEY` | API key de Google AI Studio (https://aistudio.google.com/apikey) |
 
-La clave de Gemini solo se usa en el servidor (route handler `/api/extract`), nunca en el frontend.
+La clave de Gemini solo se usa en el servidor (route handlers `/api/extract`, `/api/analyze-photo` y `/api/weekly-review`), nunca en el frontend.
 
 ## Despliegue en Vercel
 

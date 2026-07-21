@@ -23,3 +23,40 @@ export const DailyVoiceSchema = z.object({
 });
 
 export type DailyVoiceData = z.infer<typeof DailyVoiceSchema>;
+
+export const MealItemSchema = z.object({
+  food_name: z.string(),
+  estimated_quantity: z.number().nullable(),
+  unit: z.string().nullable(),
+  calories: z.number().nullable(),
+  protein: z.number().nullable(),
+  carbs: z.number().nullable(),
+  fats: z.number().nullable(),
+  suspected_lactose: z.boolean(),
+  suspected_fructose: z.boolean(),
+  suspected_sorbitol: z.boolean(),
+  suspected_polyols: z.boolean(),
+});
+
+export const MealPhotoSchema = z.object({
+  meal_type: z.enum(["desayuno", "comida", "cena", "snack", "desconocido"]),
+  description: z.string(),
+  items: z.array(MealItemSchema),
+  estimated_calories: z.number().nullable(),
+  estimated_protein: z.number().nullable(),
+  estimated_carbs: z.number().nullable(),
+  estimated_fats: z.number().nullable(),
+  digestive_warning: z.string().nullable(),
+  confidence: z.number().min(0).max(1),
+});
+
+export type MealItemData = z.infer<typeof MealItemSchema>;
+export type MealPhotoData = z.infer<typeof MealPhotoSchema>;
+
+export const WeeklyReviewAISchema = z.object({
+  ai_summary: z.string(),
+  recommended_adjustment: z.string(),
+  adherence_score: z.number().min(0).max(10).nullable(),
+});
+
+export type WeeklyReviewAIData = z.infer<typeof WeeklyReviewAISchema>;

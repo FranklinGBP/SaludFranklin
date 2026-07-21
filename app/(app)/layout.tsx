@@ -28,13 +28,19 @@ export default async function AppLayout({
 
       <nav className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white">
         <div className="mx-auto flex max-w-3xl justify-around py-2 text-xs">
-          <Link href="/dashboard" className="flex flex-col items-center gap-1 px-4 py-1 text-slate-600 hover:text-emerald-600">
+          <Link href="/dashboard" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
             <span className="text-xl">📊</span>Dashboard
           </Link>
-          <Link href="/registro" className="flex flex-col items-center gap-1 px-4 py-1 text-slate-600 hover:text-emerald-600">
+          <Link href="/registro" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
             <span className="text-xl">🎙️</span>Registro
           </Link>
-          <Link href="/historial" className="flex flex-col items-center gap-1 px-4 py-1 text-slate-600 hover:text-emerald-600">
+          <Link href="/fotos" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
+            <span className="text-xl">📷</span>Fotos
+          </Link>
+          <Link href="/revision" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
+            <span className="text-xl">🤖</span>Revisión
+          </Link>
+          <Link href="/historial" className="flex flex-col items-center gap-1 px-2 py-1 text-slate-600 hover:text-emerald-600">
             <span className="text-xl">📅</span>Historial
           </Link>
         </div>
