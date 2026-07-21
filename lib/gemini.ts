@@ -4,8 +4,14 @@ type GeminiInlineDataPart = {
 };
 export type GeminiPart = GeminiTextPart | GeminiInlineDataPart;
 
+type GeminiErrorDetail = {
+  "@type"?: string;
+  retryDelay?: string;
+  violations?: { quotaMetric?: string; quotaId?: string }[];
+};
+
 type GeminiErrorBody = {
-  error?: { code?: number; message?: string; status?: string };
+  error?: { code?: number; message?: string; status?: string; details?: GeminiErrorDetail[] };
 };
 
 type JsonSchema = Record<string, unknown>;
@@ -60,11 +66,18 @@ function relaxResponseSchema(value: unknown, depth = 0): unknown {
   return relaxed;
 }
 
+// Máximo que estamos dispuestos a esperar dentro de la función cuando Gemini
+// pide reintentar tras un 429 por cuota por minuto.
+const MAX_RETRY_WAIT_MS = 15_000;
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Llama a Gemini pidiendo JSON estructurado. Si la petición se cuelga (timeout)
  * o Gemini responde con un error transitorio (5xx), reintenta automáticamente
  * hasta agotar `maxAttempts`, siempre que quepa en el tiempo de la función.
- * Si se indica `fallbackModel`, los reintentos usan ese modelo.
+ * Si se indica `fallbackModel`, los reintentos usan ese modelo; esto también
+ * permite esquivar los 429 de cuota, porque cada modelo tiene su propia cuota.
  */
 export async function callGeminiJSON(options: {
   apiKey: string;
@@ -113,9 +126,20 @@ export async function callGeminiJSON(options: {
     const retryable = result.status === 504 || result.retryable === true;
     if (!retryable || attempt === maxAttempts) break;
 
+    const nextModel = fallbackModel ?? model;
+
+    // Un 429 por cuota por minuto solo tiene sentido reintentarlo contra el
+    // MISMO modelo si esperamos lo que pide Google y cabe en el presupuesto.
+    // Contra un modelo distinto se puede reintentar de inmediato.
+    if (result.rateLimited && nextModel === attemptModel) {
+      const waitMs = result.retryAfterMs ?? NaN;
+      if (!Number.isFinite(waitMs) || waitMs > MAX_RETRY_WAIT_MS) break;
+      await sleep(waitMs);
+    }
+
     console.warn("[gemini] retrying after transient failure", {
       model: attemptModel,
-      nextModel: fallbackModel ?? model,
+      nextModel,
       attempt,
       status: result.status,
       message: result.message,
@@ -127,7 +151,14 @@ export async function callGeminiJSON(options: {
 
 type GeminiOnceResult =
   | { ok: true; text: string }
-  | { ok: false; status: number; message: string; retryable?: boolean };
+  | {
+      ok: false;
+      status: number;
+      message: string;
+      retryable?: boolean;
+      rateLimited?: boolean;
+      retryAfterMs?: number;
+    };
 
 async function callGeminiOnce(options: {
   apiKey: string;
@@ -225,23 +256,64 @@ async function callGeminiOnce(options: {
   return { ok: true, text: rawText };
 }
 
+/** Convierte el retryDelay de Google ("22s", "3.5s") a milisegundos. */
+function parseRetryDelayMs(details: GeminiErrorDetail[] | undefined): number | undefined {
+  const retryInfo = details?.find((d) => d["@type"]?.endsWith("RetryInfo"));
+  const raw = retryInfo?.retryDelay;
+  if (!raw) return undefined;
+  const seconds = Number.parseFloat(raw.replace(/s$/i, ""));
+  return Number.isFinite(seconds) ? Math.ceil(seconds * 1000) : undefined;
+}
+
 function parseGeminiError(model: string, status: number, rawDetail: string): GeminiOnceResult {
   let upstreamMessage = "La API de Gemini rechazó la solicitud";
+  let details: GeminiErrorDetail[] | undefined;
   try {
     const parsed = JSON.parse(rawDetail) as GeminiErrorBody;
     upstreamMessage = parsed.error?.message || upstreamMessage;
+    details = parsed.error?.details;
   } catch {
     // Texto plano; el detalle completo queda en los logs.
   }
 
   console.error("[gemini] upstream error", { model, status, detail: rawDetail });
 
+  if (status === 429) {
+    // Las cuotas diarias no se recuperan hasta el día siguiente; las de
+    // "por minuto" sí, y Google indica cuánto esperar en RetryInfo.
+    const quotaIds = (details ?? [])
+      .flatMap((d) => d.violations ?? [])
+      .map((v) => `${v.quotaId ?? ""} ${v.quotaMetric ?? ""}`)
+      .join(" ");
+    const isDailyQuota = /per.?day|daily/i.test(quotaIds);
+    const retryAfterMs = parseRetryDelayMs(details);
+
+    if (isDailyQuota) {
+      return {
+        ok: false,
+        status: 429,
+        message:
+          "Se ha agotado la cuota diaria gratuita de Gemini para este modelo. Se restablece a medianoche (hora del Pacífico); también puedes activar facturación en Google AI Studio para ampliarla.",
+        retryable: false,
+        rateLimited: true,
+      };
+    }
+
+    return {
+      ok: false,
+      status: 429,
+      message:
+        "Se ha alcanzado el límite de peticiones por minuto de Gemini. Espera unos segundos y prueba de nuevo.",
+      retryable: true,
+      rateLimited: true,
+      retryAfterMs,
+    };
+  }
+
   const message =
-    status === 429
-      ? "Se ha alcanzado temporalmente el límite de uso de Gemini. Prueba de nuevo en unos minutos."
-      : status === 503
-        ? "Gemini está saturado en este momento. Prueba de nuevo en unos segundos."
-        : `Error de Gemini (${status}): ${upstreamMessage}`;
+    status === 503
+      ? "Gemini está saturado en este momento. Prueba de nuevo en unos segundos."
+      : `Error de Gemini (${status}): ${upstreamMessage}`;
 
   return { ok: false, status: 502, message, retryable: status >= 500 };
 }

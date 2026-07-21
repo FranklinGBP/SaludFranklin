@@ -6,6 +6,8 @@ import { callGeminiJSON } from "@/lib/gemini";
 export const maxDuration = 60;
 
 const GEMINI_MODEL = "gemini-3.5-flash";
+// El reintento usa Flash-Lite: cuota independiente y menor latencia.
+const GEMINI_FALLBACK_MODEL = "gemini-3.1-flash-lite";
 // Dos intentos de 25 s caben en los 60 s de la función.
 const GEMINI_TIMEOUT_MS = 25_000;
 const GEMINI_MAX_ATTEMPTS = 2;
@@ -211,6 +213,7 @@ export async function POST() {
       timeoutMs: GEMINI_TIMEOUT_MS,
       maxOutputTokens: 2048,
       maxAttempts: GEMINI_MAX_ATTEMPTS,
+      fallbackModel: GEMINI_FALLBACK_MODEL,
     });
 
     if (!result.ok) {
