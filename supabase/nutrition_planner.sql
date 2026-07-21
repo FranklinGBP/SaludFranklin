@@ -98,16 +98,44 @@ create policy "nutrition_plan_days_own"
   on public.nutrition_plan_days
   for all
   to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.nutrition_plans p
+      where p.id = plan_id and p.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.nutrition_plans p
+      where p.id = plan_id and p.user_id = auth.uid()
+    )
+  );
 
 drop policy if exists "nutrition_plan_meals_own" on public.nutrition_plan_meals;
 create policy "nutrition_plan_meals_own"
   on public.nutrition_plan_meals
   for all
   to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
+  using (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.nutrition_plan_days d
+      where d.id = day_id and d.user_id = auth.uid()
+    )
+  )
+  with check (
+    auth.uid() = user_id
+    and exists (
+      select 1
+      from public.nutrition_plan_days d
+      where d.id = day_id and d.user_id = auth.uid()
+    )
+  );
 
 grant select, insert, update, delete on public.nutrition_preferences to authenticated;
 grant select, insert, update, delete on public.nutrition_plans to authenticated;
