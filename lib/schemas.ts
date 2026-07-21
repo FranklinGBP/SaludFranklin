@@ -102,9 +102,27 @@ export const NutritionPlanAISchema = z.object({
   days: z.array(NutritionDayAISchema).length(7),
 });
 
+export const NutritionRotationMealAISchema = NutritionMealAISchema.extend({
+  template_id: z.string().min(1).max(50),
+});
+
+export const NutritionRotationScheduleDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  template_ids: z.array(z.string().min(1).max(50)).min(3).max(5),
+});
+
+export const NutritionRotationAISchema = z.object({
+  strategy: z.string().min(10).max(1500),
+  shopping_tips: z.string().min(2).max(1000),
+  templates: z.array(NutritionRotationMealAISchema).min(6).max(12),
+  schedule: z.array(NutritionRotationScheduleDaySchema).max(7).optional().default([]),
+});
+
 export type NutritionIngredientSelection = z.infer<typeof NutritionIngredientSelectionSchema>;
 export type NutritionMealAIData = z.infer<typeof NutritionMealAISchema>;
 export type NutritionPlanAIData = z.infer<typeof NutritionPlanAISchema>;
+export type NutritionRotationMealAIData = z.infer<typeof NutritionRotationMealAISchema>;
+export type NutritionRotationAIData = z.infer<typeof NutritionRotationAISchema>;
 
 export const WeeklyReviewAISchema = z.object({
   ai_summary: z.string(),
