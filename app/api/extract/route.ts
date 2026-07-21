@@ -2,17 +2,21 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { DailyVoiceSchema } from "@/lib/schemas";
 
-const GEMINI_MODEL = "gemini-3.5-flash";
+export const maxDuration = 30;
+
+// Extracción sencilla y frecuente: Flash-Lite ofrece menor latencia y coste.
+const GEMINI_MODEL = "gemini-3.1-flash-lite";
+const GEMINI_TIMEOUT_MS = 15_000;
 
 const SYSTEM_PROMPT = `Eres un extractor de datos de salud. El usuario describe su día (peso, sueño, pasos, entrenamiento, síntomas digestivos, etc.) en español.
 Extrae ÚNICAMENTE los datos mencionados explícitamente. Si un dato no se menciona, usa null (o false para booleanos).
 Los números decimales en español usan coma ("82,4 kilos" = 82.4).
+Si el usuario dice que hizo muy pocos pasos pero no da una cifra, usa null, no inventes una cantidad.
+Si dice que no tiene hinchazón, dolor o gases, usa 0 para ese síntoma.
 Escalas de síntomas (hinchazón, dolor, gases, energía, hambre): 0 a 10.
 bristol_type: escala de Bristol 1-7 si se menciona la consistencia de las deposiciones.
 En "notes" resume brevemente cualquier información relevante que no encaje en los demás campos. Nunca inventes datos.`;
 
-// Gemini admite un subconjunto de JSON Schema. Para campos opcionales se usa
-// un array de tipos, por ejemplo ["number", "null"], en lugar de nullable:true.
 const RESPONSE_SCHEMA = {
   type: "object",
   properties: {
@@ -69,117 +73,173 @@ type GeminiErrorBody = {
 };
 
 export async function POST(request: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
 
-  if (!user) {
-    return NextResponse.json({ error: "No autenticado" }, { status: 401 });
-  }
+  console.info("[extract] request started", { requestId, model: GEMINI_MODEL });
 
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey || apiKey.startsWith("PON_AQUI")) {
+  try {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: "No autenticado", requestId }, { status: 401 });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey.startsWith("PON_AQUI")) {
+      return NextResponse.json(
+        { error: "Falta configurar GEMINI_API_KEY en Vercel.", requestId },
+        { status: 500 }
+      );
+    }
+
+    const body = await request.json().catch(() => null);
+    const text = body?.text;
+
+    if (!text || typeof text !== "string" || text.trim().length < 3) {
+      return NextResponse.json({ error: "Texto vacío", requestId }, { status: 400 });
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+
+    let res: Response;
+    try {
+      res = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": apiKey,
+          },
+          signal: controller.signal,
+          body: JSON.stringify({
+            systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+            contents: [{ role: "user", parts: [{ text }] }],
+            generationConfig: {
+              responseFormat: {
+                text: {
+                  mimeType: "APPLICATION_JSON",
+                  schema: RESPONSE_SCHEMA,
+                },
+              },
+              thinkingConfig: {
+                thinkingLevel: "MINIMAL",
+              },
+              maxOutputTokens: 1024,
+            },
+          }),
+        }
+      );
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        console.error("[extract] Gemini timeout", {
+          requestId,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return NextResponse.json(
+          {
+            error: "Gemini ha tardado demasiado. Inténtalo de nuevo; la solicitud se ha cancelado a los 15 segundos.",
+            requestId,
+          },
+          { status: 504 }
+        );
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!res.ok) {
+      const rawDetail = await res.text();
+      let upstreamMessage = "La API de Gemini rechazó la solicitud";
+
+      try {
+        const parsed = JSON.parse(rawDetail) as GeminiErrorBody;
+        upstreamMessage = parsed.error?.message || upstreamMessage;
+      } catch {
+        // Puede ser texto plano; el detalle completo queda en los logs de Vercel.
+      }
+
+      console.error("[extract] Gemini error", {
+        requestId,
+        status: res.status,
+        elapsedMs: Date.now() - startedAt,
+        detail: rawDetail,
+      });
+
+      const userMessage =
+        res.status === 400
+          ? `Gemini rechazó el formato de la solicitud: ${upstreamMessage}`
+          : res.status === 403
+            ? `Gemini ha rechazado la clave o el proyecto: ${upstreamMessage}`
+            : res.status === 429
+              ? "Se ha alcanzado temporalmente el límite de uso de Gemini. Prueba de nuevo en unos minutos."
+              : `Error de Gemini (${res.status}): ${upstreamMessage}`;
+
+      return NextResponse.json({ error: userMessage, requestId }, { status: 502 });
+    }
+
+    const json = await res.json();
+    const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!rawText) {
+      console.error("[extract] Empty Gemini response", { requestId, json });
+      return NextResponse.json(
+        { error: "Gemini no devolvió datos estructurados", requestId },
+        { status: 502 }
+      );
+    }
+
+    let parsed;
+    try {
+      parsed = DailyVoiceSchema.parse(JSON.parse(rawText));
+    } catch (error) {
+      console.error("[extract] Validation failed", { requestId, error, rawText });
+      return NextResponse.json(
+        { error: "La respuesta de la IA no superó la validación", requestId },
+        { status: 502 }
+      );
+    }
+
+    console.info("[extract] request completed", {
+      requestId,
+      elapsedMs: Date.now() - startedAt,
+      model: GEMINI_MODEL,
+    });
+
+    // No bloqueamos la respuesta por el registro de auditoría.
+    void supabase
+      .from("ai_analyses")
+      .insert({
+        user_id: user.id,
+        source_type: "voice_text",
+        provider: "google",
+        model: GEMINI_MODEL,
+        prompt_version: "v3",
+        input_data: { text },
+        output_data: parsed,
+        status: "done",
+      })
+      .then(({ error }) => {
+        if (error) console.error("[extract] audit insert failed", { requestId, error });
+      });
+
+    return NextResponse.json({ data: parsed, requestId });
+  } catch (error) {
+    console.error("[extract] unexpected error", {
+      requestId,
+      elapsedMs: Date.now() - startedAt,
+      error,
+    });
+
     return NextResponse.json(
-      { error: "Falta configurar GEMINI_API_KEY en Vercel." },
+      { error: "Error inesperado en el servidor", requestId },
       { status: 500 }
     );
   }
-
-  const body = await request.json().catch(() => null);
-  const text = body?.text;
-
-  if (!text || typeof text !== "string" || text.trim().length < 3) {
-    return NextResponse.json({ error: "Texto vacío" }, { status: 400 });
-  }
-
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text }] }],
-        generationConfig: {
-          responseFormat: {
-            text: {
-              mimeType: "APPLICATION_JSON",
-              schema: RESPONSE_SCHEMA,
-            },
-          },
-          temperature: 0,
-        },
-      }),
-    }
-  );
-
-  if (!res.ok) {
-    const rawDetail = await res.text();
-    let upstreamMessage = "La API de Gemini rechazó la solicitud";
-
-    try {
-      const parsed = JSON.parse(rawDetail) as GeminiErrorBody;
-      upstreamMessage = parsed.error?.message || upstreamMessage;
-    } catch {
-      // La respuesta puede ser HTML o texto plano. No se devuelve completa al cliente.
-    }
-
-    console.error("Gemini error", {
-      status: res.status,
-      detail: rawDetail,
-    });
-
-    const userMessage =
-      res.status === 400
-        ? `Gemini rechazó el formato de la solicitud: ${upstreamMessage}`
-        : res.status === 403
-          ? `Gemini ha rechazado la clave o el proyecto: ${upstreamMessage}`
-          : res.status === 429
-            ? "Se ha alcanzado temporalmente el límite de uso de Gemini. Prueba de nuevo en unos minutos."
-            : `Error de Gemini (${res.status}): ${upstreamMessage}`;
-
-    return NextResponse.json({ error: userMessage }, { status: 502 });
-  }
-
-  const json = await res.json();
-  const rawText = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!rawText) {
-    return NextResponse.json(
-      { error: "Gemini no devolvió datos estructurados" },
-      { status: 502 }
-    );
-  }
-
-  let parsed;
-  try {
-    parsed = DailyVoiceSchema.parse(JSON.parse(rawText));
-  } catch (error) {
-    console.error("Validación fallida", { error, rawText });
-    return NextResponse.json(
-      { error: "La respuesta de la IA no superó la validación" },
-      { status: 502 }
-    );
-  }
-
-  const { error: auditError } = await supabase.from("ai_analyses").insert({
-    user_id: user.id,
-    source_type: "voice_text",
-    provider: "google",
-    model: GEMINI_MODEL,
-    prompt_version: "v2",
-    input_data: { text },
-    output_data: parsed,
-    status: "done",
-  });
-
-  if (auditError) {
-    console.error("No se pudo registrar ai_analyses", auditError);
-  }
-
-  return NextResponse.json({ data: parsed });
 }
