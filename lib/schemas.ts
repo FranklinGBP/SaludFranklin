@@ -77,23 +77,10 @@ export const WorkoutPlanAISchema = z.object({
 export type PlannedExerciseData = z.infer<typeof PlannedExerciseSchema>;
 export type WorkoutPlanAIData = z.infer<typeof WorkoutPlanAISchema>;
 
-export const NutritionIngredientSelectionSchema = z
-  .string()
-  .transform((value, context) => {
-    const separatorIndex = value.lastIndexOf("|");
-    const foodId = value.slice(0, separatorIndex).trim();
-    const grams = Number(value.slice(separatorIndex + 1).trim());
-
-    if (separatorIndex <= 0 || !foodId || !Number.isFinite(grams) || grams < 5 || grams > 600) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `Ingrediente inválido: ${value}`,
-      });
-      return z.NEVER;
-    }
-
-    return { food_id: foodId, grams };
-  });
+export const NutritionIngredientSelectionSchema = z.object({
+  food_id: z.string().min(1),
+  grams: z.number().min(5).max(600),
+});
 
 export const NutritionMealAISchema = z.object({
   meal_type: z.enum(["desayuno", "comida", "cena", "snack"]),
@@ -101,7 +88,7 @@ export const NutritionMealAISchema = z.object({
   ingredients: z.array(NutritionIngredientSelectionSchema).min(1).max(8),
   preparation: z.string().min(2).max(500),
   visual_portion: z.string().min(2).max(250),
-  notes: z.string().max(300),
+  notes: z.string().max(300).nullable(),
 });
 
 export const NutritionDayAISchema = z.object({
