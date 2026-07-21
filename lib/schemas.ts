@@ -53,6 +53,30 @@ export const MealPhotoSchema = z.object({
 export type MealItemData = z.infer<typeof MealItemSchema>;
 export type MealPhotoData = z.infer<typeof MealPhotoSchema>;
 
+export const PlannedExerciseSchema = z.object({
+  exercise_id: z.string().nullable(),
+  exercise_name: z.string(),
+  sets: z.number().int().min(1).max(10).nullable(),
+  reps: z.string(),
+  rest_seconds: z.number().int().min(0).max(600).nullable(),
+  notes: z.string().nullable(),
+});
+
+export const PlannedDaySchema = z.object({
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  location: z.enum(["casa", "gimnasio", "descanso"]),
+  focus: z.string().nullable(),
+  exercises: z.array(PlannedExerciseSchema),
+});
+
+export const WorkoutPlanAISchema = z.object({
+  strategy: z.string(),
+  days: z.array(PlannedDaySchema).length(7),
+});
+
+export type PlannedExerciseData = z.infer<typeof PlannedExerciseSchema>;
+export type WorkoutPlanAIData = z.infer<typeof WorkoutPlanAISchema>;
+
 export const WeeklyReviewAISchema = z.object({
   ai_summary: z.string(),
   recommended_adjustment: z.string(),

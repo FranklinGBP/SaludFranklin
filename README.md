@@ -12,6 +12,7 @@ Aplicación web personal de seguimiento de pérdida de grasa y salud digestiva m
 - ✅ Fase 3: fotografías de comidas y etiquetas — análisis con Gemini Vision (alimentos, macros, avisos FODMAP), confirmación editable y guardado en `meals` + Supabase Storage (bucket privado `ffv-media`)
 - ✅ Fase 4: revisión semanal con IA — métricas agregadas de la semana (peso, pasos, sueño, proteína, entrenos, síntomas digestivos) + resumen y ajuste recomendado generados por Gemini, guardados en `weekly_reviews`
 - ✅ Biblioteca de ejercicios: 873 ejercicios con imágenes y técnica de [free-exercise-db](https://github.com/yuhonas/free-exercise-db) (dominio público). El JSON vive en `public/data/exercises.json`; las imágenes se sirven desde el CDN de GitHub
+- ✅ Plan semanal de entrenamiento con IA: Gemini diseña la semana (casa/gimnasio, series, reps, descansos) eligiendo ejercicios de la biblioteca; se puede replanificar contándole las circunstancias ("hoy no he entrenado", "me duele el hombro") sin tocar los días ya completados. Tablas `workout_plans`, `planned_workouts` y `planned_exercises`
 
 ## Stack
 
