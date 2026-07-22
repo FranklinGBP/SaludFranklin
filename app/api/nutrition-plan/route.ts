@@ -18,6 +18,9 @@ import {
 export const maxDuration = 60;
 
 const GEMINI_MODEL = "gemini-3.5-flash";
+// El reintento usa Flash-Lite: además de ser más rápido, tiene una cuota
+// independiente, por lo que esquiva los 429 por límite de uso del principal.
+const GEMINI_FALLBACK_MODEL = "gemini-3.1-flash-lite";
 const GEMINI_TIMEOUT_MS = 25_000;
 
 type MealType = NutritionRotationMealAIData["meal_type"];
@@ -682,7 +685,8 @@ export async function POST(request: Request) {
       responseSchema: RESPONSE_SCHEMA,
       timeoutMs: GEMINI_TIMEOUT_MS,
       maxOutputTokens: 5000,
-      maxAttempts: 1,
+      maxAttempts: 2,
+      fallbackModel: GEMINI_FALLBACK_MODEL,
     });
 
     let rotation: NutritionRotationAIData;
